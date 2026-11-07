@@ -1,0 +1,10 @@
+{
+  "name": "hiyoko",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Learn Japanese the way kids do: listen, point, and do. Offline, no account.",
+  "scripts": {
+    "start": "node serve.js",
+    "test": "node --test test/*.test.js"
+  }
+}
