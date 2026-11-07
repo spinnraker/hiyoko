@@ -11,7 +11,7 @@ npm test           # engine tests
 
 No dependencies and no build step. To put it on your iPhone, host the folder on any static host (GitHub Pages works), open it in Safari, then Share → Add to Home Screen. Data stays on the device; use Settings → Export backup to keep a copy.
 
-**Voice:** it uses your phone's Japanese voice. On iPhone, download an Enhanced one for much better sound: Settings → Accessibility → Spoken Content → Voices → Japanese. Pick it in Hiyoko → Settings.
+**Voice:** it uses your phone's Japanese voice. For much better sound, search iPhone Settings for "Voices", open Japanese and download an Enhanced or Premium voice, then pick it in Hiyoko → Settings. If it isn't listed there, close Hiyoko completely and reopen it, or restart the phone. Some iOS versions don't share downloaded voices with web apps.
 
 ## How children learn, and what the app does about it
 

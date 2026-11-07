@@ -445,7 +445,7 @@
 
   function voiceWarning() {
     if (!Voice.available()) return `<p class="warn">This browser can’t speak. Open Hiyoko in Safari or Chrome.</p>`;
-    if (!Voice.hasJapanese()) return `<p class="warn">No Japanese voice found yet. On iPhone: Settings → Accessibility → Spoken Content → Voices → Japanese. Download one, then come back.</p>`;
+    if (!Voice.hasJapanese()) return `<p class="warn">No Japanese voice found yet. Search iPhone Settings for “Voices”, open Japanese and download one, then come back.</p>`;
     return '';
   }
 
@@ -557,9 +557,9 @@
       <div class="field"><span>Daily goal</span>${seg('goal', [[5, '5'], [10, '10'], [15, '15'], [20, '20'], [30, '30']], st.goal)}
         <p class="fine">Minutes a day. Two minutes always keeps your streak.</p></div>
       <div class="field"><span>Japanese voice</span>
-        ${Voice.list.length > 1 ? `<select data-action="voice" aria-label="Japanese voice">${Voice.list.map((v) => `<option value="${esc(v.name)}" ${current && v.name === current.name ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>` : `<p class="fine">${current ? esc(current.name) : 'None found'}</p>`}
+        ${Voice.list.length ? `<select data-action="voice" aria-label="Japanese voice">${Voice.list.map((v) => `<option value="${esc(v.name)}" ${current && v.name === current.name ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>` : '<p class="fine">None found</p>'}
         <button class="link" data-action="test-voice">Play a sample</button>
-        <p class="fine">On iPhone, an “Enhanced” voice sounds much better: Settings → Accessibility → Spoken Content → Voices → Japanese.</p>
+        <p class="fine">${Voice.list.length === 1 ? 'This is the only Japanese voice your browser shares with Hiyoko. ' : ''}For a better voice, search iPhone Settings for “Voices”, open Japanese and download an Enhanced or Premium one. If it doesn’t appear here, close Hiyoko completely and reopen it, or restart your phone. Some iOS versions don’t share downloaded voices with web apps.</p>
       </div>
       ${voiceWarning()}
       <div class="list" style="margin-top:28px">
@@ -732,7 +732,12 @@
   // Refresh the date-dependent screens when the day changes or the app returns.
   let lastDay = today();
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && today() !== lastDay) { lastDay = today(); render(); }
+    if (document.hidden) return;
+    // A voice may have been downloaded while the app was in the background.
+    const before = Voice.list.map((v) => v.name).join();
+    Voice.refresh();
+    const voicesChanged = Voice.list.map((v) => v.name).join() !== before;
+    if (today() !== lastDay || voicesChanged) { lastDay = today(); render(); }
   });
 
   render();
