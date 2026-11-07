@@ -5,6 +5,7 @@
   "description": "Learn Japanese the way kids do: listen, point, and do. Offline, no account.",
   "scripts": {
     "start": "node serve.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "review": "node tools/review-sheet.js"
   }
 }

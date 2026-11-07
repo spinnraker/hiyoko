@@ -57,21 +57,22 @@
     { id: 'ringo', ja: 'りんご', say: 'りんご', en: 'apple', pic: '🍎' },
     { id: 'kuruma', ja: 'くるま', say: '車', en: 'car', pic: '🚗' },
     { id: 'hon', ja: 'ほん', say: '本', en: 'book', pic: '📕' },
+    { id: 'isu', ja: 'いす', say: '椅子', en: 'chair', pic: '🪑' },
     { id: 'kutsu', ja: 'くつ', say: '靴', en: 'shoe', pic: '👟' },
     { id: 'sakana', ja: 'さかな', say: '魚', en: 'fish', pic: '🐟' },
     { id: 'ki', ja: 'き', say: '木', en: 'tree', pic: '🌳' },
+    { id: 'hako', ja: 'はこ', say: '箱', en: 'box', pic: '📦' },
     { id: 'tori', ja: 'とり', say: '鳥', en: 'bird', pic: '🐦' },
     { id: 'kagi', ja: 'かぎ', say: '鍵', en: 'key', pic: '🔑' },
     { id: 'banana', ja: 'バナナ', say: 'バナナ', en: 'banana', pic: '🍌' },
     { id: 'boushi', ja: 'ぼうし', say: '帽子', en: 'hat', pic: '🧢' },
+    { id: 'kaban', ja: 'かばん', say: 'かばん', en: 'bag', pic: '👜' },
     { id: 'ie', ja: 'いえ', say: 'いえ', en: 'house', pic: '🏠' },
     { id: 'kasa', ja: 'かさ', say: '傘', en: 'umbrella', pic: '☂️' },
     { id: 'hoshi', ja: 'ほし', say: '星', en: 'star', pic: '⭐' },
     { id: 'tsuki', ja: 'つき', say: '月', en: 'moon', pic: '🌙' },
-    { id: 'kaban', ja: 'かばん', say: 'かばん', en: 'bag', pic: '👜' },
     { id: 'hana', ja: 'はな', say: '花', en: 'flower', pic: '🌷' },
     { id: 'tamago', ja: 'たまご', say: '卵', en: 'egg', pic: '🥚' },
-    { id: 'isu', ja: 'いす', say: '椅子', en: 'chair', pic: '🪑' },
     { id: 'booru', ja: 'ボール', say: 'ボール', en: 'ball', pic: '⚽' },
     { id: 'densha', ja: 'でんしゃ', say: '電車', en: 'train', pic: '🚃' },
     { id: 'pan', ja: 'パン', say: 'パン', en: 'bread', pic: '🍞' },
@@ -94,7 +95,26 @@
   const SIZE_UNLOCK = 6; // known nouns before big/small appears
   const AND_UNLOCK = 10; // known nouns before "X と Y" appears
 
-  const ITEM_IDS = new Set([...WORDS.map((w) => w.id), ...Object.keys(ADJ)]);
+  // Where things are. Taught by moving things around, like "put the cat on the chair".
+  const REL = {
+    ue: { id: 'ue', ja: 'うえ', say: '上', en: 'on' },
+    shita: { id: 'shita', ja: 'した', say: '下', en: 'under' },
+    naka: { id: 'naka', ja: 'なか', say: '中', en: 'in' },
+    yoko: { id: 'yoko', ja: 'よこ', say: '横', en: 'next to' },
+  };
+  // Introduced two at a time; the second pair once the first is steady.
+  const REL_STEPS = [['ue', 'shita'], ['naka', 'yoko']];
+  // Things to put other things on, under, in or next to, and where that makes sense.
+  const ANCHORS = {
+    isu: ['ue', 'shita', 'yoko'],
+    ki: ['ue', 'shita', 'yoko'],
+    hako: ['naka', 'ue', 'yoko'],
+    kaban: ['naka', 'ue', 'yoko'],
+  };
+  const MOVERS = ['neko', 'inu', 'ringo', 'hon', 'kutsu', 'sakana', 'tori', 'kagi', 'banana', 'boushi', 'tamago', 'booru', 'pan', 'onigiri', 'kuma', 'usagi', 'tegami', 'hana', 'hoshi'];
+  const WHERE_UNLOCK = 8; // known words before "where" rounds start
+
+  const ITEM_IDS = new Set([...WORDS.map((w) => w.id), ...Object.keys(ADJ), ...Object.keys(REL)]);
 
   const PRAISE = [
     { ja: 'そう！', say: 'そう！', en: 'Yes!' },
@@ -130,10 +150,10 @@
       blurb: 'From the kitchen to the first sip.',
       steps: [
         { ja: 'キッチンに いこう。', say: 'キッチンに行こう。', en: 'Let’s go to the kitchen.', pic: '🚶', wait: 10 },
-        { ja: 'コップを とって。', say: 'コップを取って。', en: 'Get a cup.', pic: '☕', wait: 8 },
-        { ja: 'コップを テーブルに おいて。', say: 'コップをテーブルに置いて。', en: 'Put the cup on the table.', pic: '☕', wait: 6 },
+        { ja: 'カップを とって。', say: 'カップを取って。', en: 'Get a cup.', pic: '☕', wait: 8 },
+        { ja: 'カップを テーブルに おいて。', say: 'カップをテーブルに置いて。', en: 'Put the cup on the table.', pic: '☕', wait: 6 },
         { ja: 'コーヒーを いれて。', say: 'コーヒーを入れて。', en: 'Make the coffee.', pic: '☕', wait: 40 },
-        { ja: 'コップを もって。', say: 'コップを持って。', en: 'Hold the cup.', pic: '☕', wait: 5 },
+        { ja: 'カップを もって。', say: 'カップを持って。', en: 'Hold the cup.', pic: '☕', wait: 5 },
         { ja: 'あつい？ あついね。', say: '熱い？熱いね。', en: 'Hot? It’s hot, huh.', pic: '♨️', wait: 5 },
         { ja: 'のんで。', say: '飲んで。', en: 'Drink.', pic: '☕', wait: 8 },
         { ja: 'おいしい？', say: 'おいしい？', en: 'Is it good?', pic: '😋', wait: 4 },
@@ -357,6 +377,8 @@
     const n = sceneSize(met.length);
     const fresh = canMeetNew(state, stats, today) ? nextNewWord(state) : null;
 
+    if (!fresh && whereReady(state, stats, known) && (!state.met.ue || rng() < 0.4)) return buildWhereRound(state, today, rng, stats);
+
     // Big/small round: two sizes of one familiar thing.
     const sizeOn = known >= SIZE_UNLOCK;
     const sizeRound = sizeOn && !fresh && (!state.met.ookii || rng() < 0.35);
@@ -435,6 +457,162 @@
       best = a;
     }
     return best;
+  }
+
+  // ---------- Look & point: where things are ----------
+
+  function knownAnchors(state, stats) {
+    return Object.keys(ANCHORS).filter((id) => state.met[id] && stats[id] && stats[id].known);
+  }
+
+  function knownMovers(state, stats) {
+    return MOVERS.filter((id) => state.met[id] && stats[id] && stats[id].known);
+  }
+
+  function whereReady(state, stats, known) {
+    return known >= WHERE_UNLOCK && knownAnchors(state, stats).length >= 2 && knownMovers(state, stats).length >= 2;
+  }
+
+  /** Relations in play for this round, and which (if any) are met for the first time. */
+  function relationsFor(state, stats, anchors) {
+    const hasContainer = anchors.some((a) => ANCHORS[a].includes('naka'));
+    const inPlay = [];
+    const fresh = [];
+    for (const step of REL_STEPS) {
+      const metAll = step.every((r) => state.met[r]);
+      if (metAll) { inPlay.push(...step); continue; }
+      const prevSteady = inPlay.every((r) => stats[r] && stats[r].solid);
+      if (!inPlay.length || prevSteady) {
+        if (step.includes('naka') && !hasContainer) break;
+        inPlay.push(...step);
+        fresh.push(...step.filter((r) => !state.met[r]));
+      }
+      break;
+    }
+    return { inPlay, fresh };
+  }
+
+  /**
+   * A where-round: two anchors (chair, tree, box, bag) and two or three
+   * things to move. Beats:
+   *   demo { mover, anchor, rel, line }  the app moves it there and says so
+   *   put  { mover, anchor, rel, line, log }  you drag it there
+   */
+  function buildWhereRound(state, today, rng, stats) {
+    const objects = [];
+    const beats = [];
+    const meet = [];
+    const anchorsKnown = knownAnchors(state, stats);
+    const rels = relationsFor(state, stats, anchorsKnown);
+    // Pick anchors that can show every relation in play: "under" needs a
+    // chair or tree, "in" needs a box or bag.
+    const need = [];
+    for (const rel of ['shita', 'naka']) {
+      if (!rels.inPlay.includes(rel) || need.some((a) => ANCHORS[a].includes(rel))) continue;
+      const a = shuffled(anchorsKnown.filter((x) => ANCHORS[x].includes(rel)), rng)[0];
+      if (a) need.push(a);
+    }
+    const anchors = [...need, ...shuffled(anchorsKnown.filter((a) => !need.includes(a)), rng)].slice(0, 2);
+    const supported = (rel) => anchors.some((a) => ANCHORS[a].includes(rel));
+    const inPlay = rels.inPlay.filter(supported);
+    const fresh = rels.fresh.filter(supported);
+    meet.push(...fresh);
+
+    const moverPool = knownMovers(state, stats);
+    const ranked = moverPool.slice().sort((a, b) => priority(b, stats, today, rng) - priority(a, stats, today, rng));
+    const movers = ranked.slice(0, moverPool.length >= 6 ? 3 : 2);
+
+    const ai = anchors.map((id) => objects.push({ id, pic: WORD[id].pic, size: null, role: 'anchor' }) - 1);
+    const mi = movers.map((id) => objects.push({ id, pic: WORD[id].pic, size: null, role: 'mover' }) - 1);
+
+    const anchorFor = (rel) => ai.filter((i) => ANCHORS[objects[i].id].includes(rel));
+
+    // Show each new relation by doing it: "the cat is on the chair".
+    for (const rel of fresh) {
+      for (let k = 0; k < 2; k++) {
+        const a = pickOne(anchorFor(rel), rng);
+        const m = mi[k % mi.length];
+        beats.push({ type: 'demo', mover: m, anchor: a, rel, line: whereLine(objects, m, a, rel) });
+      }
+    }
+
+    // Then your turn. New relations come up more.
+    const puts = [];
+    let last = '';
+    for (let tries = 0; puts.length < 4 && tries < 40; tries++) {
+      const rel = fresh.length && rng() < 0.6 ? pickOne(fresh, rng) : pickOne(inPlay, rng);
+      const options = anchorFor(rel);
+      if (!options.length) continue;
+      const a = pickOne(options, rng);
+      const m = pickOne(mi, rng);
+      const key = `${m}:${a}:${rel}`;
+      if (key === last) continue;
+      last = key;
+      puts.push({ type: 'put', mover: m, anchor: a, rel, line: putLine(objects, m, a, rel), log: [objects[m].id, objects[a].id, rel] });
+    }
+    beats.push(...puts);
+    return { kind: 'where', objects, beats, meet };
+  }
+
+  function whereLine(objects, m, a, rel) {
+    const M = WORD[objects[m].id];
+    const A = WORD[objects[a].id];
+    const R = REL[rel];
+    return line(`${M.ja}は ${A.ja}の ${R.ja}。`, `${M.say}は${A.say}の${R.say}。`, `The ${M.en} is ${R.en} the ${A.en}.`);
+  }
+
+  function putLine(objects, m, a, rel) {
+    const M = WORD[objects[m].id];
+    const A = WORD[objects[a].id];
+    const R = REL[rel];
+    const [vja, vsay] = rel === 'naka' ? ['いれて', '入れて'] : ['おいて', '置いて'];
+    return line(`${M.ja}を ${A.ja}の ${R.ja}に ${vja}。`, `${M.say}を${A.say}の${R.say}に${vsay}。`, `Put the ${M.en} ${R.en} the ${A.en}.`);
+  }
+
+  function whereRightLine(objects, beat, rng = Math.random) {
+    const p = praise(rng);
+    const l = whereLine(objects, beat.mover, beat.anchor, beat.rel);
+    return line(`${p.ja} ${l.ja}`, `${p.say}${l.say}`, `${p.en} ${l.en}`);
+  }
+
+  /** You put it somewhere else: say where it ended up. */
+  function wherePlacedLine(objects, a, rel) {
+    const A = WORD[objects[a].id];
+    const R = REL[rel];
+    return line(`それは ${A.ja}の ${R.ja}。`, `それは${A.say}の${R.say}。`, `That’s ${R.en} the ${A.en}.`);
+  }
+
+  /**
+   * Where a drop at (x, y) lands relative to anchors [{ index, id, x, y, size }]
+   * (centre and rendered size). Returns { anchor, rel } for the nearest anchor
+   * the point is clearly on, under, in or next to, or null.
+   */
+  function judgeDrop(x, y, anchors) {
+    let best = null;
+    for (const a of anchors) {
+      const dx = (x - a.x) / a.size;
+      const dy = (y - a.y) / a.size;
+      const allowed = ANCHORS[a.id] || [];
+      let rel = null;
+      if (Math.abs(dx) < 0.4 && Math.abs(dy) < 0.35) rel = allowed.includes('naka') ? 'naka' : 'ue';
+      else if (Math.abs(dx) < 0.6 && dy <= -0.35 && dy > -1.3) rel = 'ue';
+      else if (Math.abs(dx) < 0.6 && dy >= 0.35 && dy < 1.3) rel = 'shita';
+      else if (Math.abs(dx) >= 0.4 && Math.abs(dx) < 1.4 && Math.abs(dy) < 0.6) rel = 'yoko';
+      if (!rel) continue;
+      const dist = Math.hypot(dx, dy);
+      if (!best || dist < best.dist) best = { anchor: a.index, rel, dist };
+    }
+    return best && { anchor: best.anchor, rel: best.rel };
+  }
+
+  /** Where to draw a mover that is `rel` an anchor (centre x, y and size). */
+  function placeFor(rel, a, side = 1) {
+    switch (rel) {
+      case 'ue': return { x: a.x, y: a.y - a.size * 0.62, scale: 1 };
+      case 'shita': return { x: a.x, y: a.y + a.size * 0.68, scale: 1 };
+      case 'naka': return { x: a.x, y: a.y + a.size * 0.06, scale: 0.6 };
+      default: return { x: a.x + side * a.size * 0.82, y: a.y + a.size * 0.12, scale: 1 };
+    }
   }
 
   function praise(rng = Math.random) {
@@ -613,7 +791,9 @@
     toKey, fromKey, addDays, diffDays,
     WORDS, WORD, ADJ, ROUTINES, ROUTINE, SIZE_UNLOCK, AND_UNLOCK, TINY, HOURS, DEFAULT_SETTINGS,
     emptyState, normalize, itemStats, metWords, knownCount,
+    REL, ANCHORS, MOVERS, WHERE_UNLOCK,
     buildRound, rightLine, wrongLines, recordAsk, recordMeet,
+    whereLine, putLine, whereRightLine, wherePlacedLine, judgeDrop, placeFor,
     routineSteps, totalSeconds, streak, journey, romaji,
   };
 });

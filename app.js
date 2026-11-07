@@ -193,6 +193,7 @@
   function startPoint() {
     play = { kind: 'point', token: {}, seconds: 0, active: Date.now(), help: false, line: null, round: null, pending: null, busy: false, met: [] };
     renderPlay();
+    document.getElementById('scene').addEventListener('click', onSceneTap);
     runPoint(play.token);
   }
 
@@ -205,11 +206,14 @@
       for (const id of round.meet) if (E.WORD[id]) play.met.push(id);
       save();
       play.round = round;
-      renderScene(round);
+      if (round.kind === 'where') renderWhere(round);
+      else renderScene(round);
       await sleep(500);
       for (const beat of round.beats) {
         if (!live()) return;
         if (beat.type === 'show') await showBeat(beat, live);
+        else if (beat.type === 'demo') await demoBeat(beat, live);
+        else if (beat.type === 'put') await putBeat(beat, live);
         else await askBeat(beat, live);
         if (!live()) return;
         await sleep(450);
@@ -254,7 +258,7 @@
 
   async function tapObject(i) {
     const p = play && play.pending;
-    if (!p || play.busy) return;
+    if (!p || play.busy || play.round.kind === 'where') return;
     play.active = Date.now();
     const round = play.round;
     clearTimeout(p.timer);
@@ -318,7 +322,7 @@
       const inRow = Math.min(cols, n - r * cols);
       for (let c = 0; c < inRow; c++) slots.push({ x: ((c + 0.5) * w) / inRow, y: ((r + 0.5) * h) / rows });
     }
-    scene.classList.remove('leaving');
+    scene.classList.remove('leaving', 'where');
     scene.innerHTML = round.objects.map((o, i) => {
       const s = slots[i];
       const jx = (Math.random() - 0.5) * cell * 0.18;
@@ -327,6 +331,200 @@
       const word = E.WORD[o.id];
       return `<button class="obj" data-i="${i}" style="left:${s.x + jx}px;top:${s.y + jy}px;font-size:${Math.round(cell * k)}px" aria-label="${esc(word.en)}${o.size ? ` (${o.size})` : ''}"><span>${o.pic}</span></button>`;
     }).join('');
+  }
+
+  // ---------- Look & point: where things are ----------
+
+  // Two anchors (chair, tree, box, bag) low in the scene; the things you
+  // move wait in a row along the top.
+  function renderWhere(round) {
+    const scene = document.getElementById('scene');
+    if (!scene) return;
+    const w = scene.clientWidth || 320;
+    const h = scene.clientHeight || 360;
+    const big = Math.round(Math.min(w * 0.3, h * 0.3));
+    const small = Math.round(big * 0.5);
+    const anchors = [];
+    const home = {};
+    const movers = round.objects.map((o, i) => i).filter((i) => round.objects[i].role === 'mover');
+    let ax = 0;
+    round.objects.forEach((o, i) => {
+      if (o.role === 'anchor') {
+        const left = ax++ === 0;
+        anchors.push({ index: i, id: o.id, x: w * (left ? 0.29 : 0.71), y: h * 0.6, size: big, side: left ? -1 : 1 });
+      }
+    });
+    movers.forEach((i, k) => { home[i] = { x: (w * (k + 1)) / (movers.length + 1), y: h * 0.13 }; });
+    play.geo = { anchors, home, w, h, size: small };
+    scene.classList.remove('leaving');
+    scene.classList.add('where');
+    scene.innerHTML = round.objects.map((o, i) => {
+      const word = E.WORD[o.id];
+      const a = anchors.find((x) => x.index === i);
+      const pos = a || home[i];
+      return `<div class="obj ${o.role}" data-i="${i}" role="img" aria-label="${esc(word.en)}" style="left:${pos.x}px;top:${pos.y}px;font-size:${a ? big : small}px"><span>${o.pic}</span></div>`;
+    }).join('');
+    scene.querySelectorAll('.obj.mover').forEach((el) => el.addEventListener('pointerdown', onMoverDown));
+  }
+
+  function moveTo(i, x, y, scale = 1, animate = true) {
+    const el = document.querySelector(`.obj[data-i="${i}"]`);
+    if (!el || !play || !play.geo) return;
+    const g = play.geo;
+    const r = (g.size * scale) / 2;
+    el.classList.toggle('moving', animate);
+    el.style.left = `${Math.max(r, Math.min(g.w - r, x))}px`;
+    el.style.top = `${Math.max(r, Math.min(g.h - r, y))}px`;
+    el.style.setProperty('--s', scale);
+  }
+
+  function moveHome(i) {
+    const p = play && play.geo && play.geo.home[i];
+    if (p) moveTo(i, p.x, p.y);
+  }
+
+  function placeAt(i, anchorIndex, rel) {
+    const a = play.geo.anchors.find((x) => x.index === anchorIndex);
+    const p = E.placeFor(rel, a, a.side);
+    moveTo(i, p.x, p.y, p.scale);
+  }
+
+  async function demoBeat(beat, live) {
+    placeAt(beat.mover, beat.anchor, beat.rel);
+    await sleep(550);
+    if (!live()) return;
+    await speak(beat.line);
+    await sleep(700);
+    if (!live()) return;
+    moveHome(beat.mover);
+    await sleep(450);
+  }
+
+  function putBeat(beat, live) {
+    return new Promise((resolve) => {
+      const p = { beat, firstTry: true, resolve, timer: null, repeats: 0, put: true };
+      play.pending = p;
+      play.selected = null;
+      p.reask = () => {
+        clearTimeout(p.timer);
+        if (!live() || play.pending !== p || p.repeats >= 2) return;
+        p.timer = setTimeout(async () => {
+          if (!live() || play.pending !== p || play.busy) return p.reask();
+          p.repeats++;
+          await speak(beat.line);
+          p.reask();
+        }, REASK_MS);
+      };
+      speak(beat.line).then(() => { if (live()) p.reask(); });
+    });
+  }
+
+  // Drag a mover; or tap it, then tap where it should go.
+  function onMoverDown(e) {
+    if (!play || !play.geo || play.busy) return;
+    const el = e.currentTarget;
+    const i = Number(el.dataset.i);
+    const start = { x: e.clientX, y: e.clientY };
+    const origin = { x: parseFloat(el.style.left), y: parseFloat(el.style.top) };
+    let moved = false;
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('dragging');
+    play.active = Date.now();
+    const move = (ev) => {
+      const dx = ev.clientX - start.x;
+      const dy = ev.clientY - start.y;
+      if (!moved && Math.hypot(dx, dy) < 8) return;
+      moved = true;
+      moveTo(i, origin.x + dx, origin.y + dy, 1, false);
+    };
+    const up = (ev) => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      el.classList.remove('dragging');
+      if (!moved) {
+        selectMover(play && play.selected === i ? null : i);
+        return;
+      }
+      selectMover(null);
+      dropMover(i, origin.x + (ev.clientX - start.x), origin.y + (ev.clientY - start.y));
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    e.preventDefault();
+  }
+
+  function selectMover(i) {
+    if (!play) return;
+    play.selected = i;
+    document.querySelectorAll('.obj.mover').forEach((el) => el.classList.toggle('selected', Number(el.dataset.i) === i));
+  }
+
+  function onSceneTap(e) {
+    if (!play || play.selected == null || e.target.closest('.obj.mover')) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    const i = play.selected;
+    selectMover(null);
+    dropMover(i, e.clientX - box.left, e.clientY - box.top);
+  }
+
+  async function dropMover(i, x, y) {
+    const p = play && play.pending;
+    if (!p || !p.put || play.busy) { moveHome(i); return; }
+    play.active = Date.now();
+    clearTimeout(p.timer);
+    const { beat } = p;
+    const objects = play.round.objects;
+    const hit = E.judgeDrop(x, y, play.geo.anchors);
+
+    if (i !== beat.mover) {
+      // Wrong thing: name it, put it back, ask again.
+      play.busy = true;
+      p.firstTry = false;
+      moveHome(i);
+      await speak({ ja: `それは ${E.WORD[objects[i].id].ja}。`, say: `それは${E.WORD[objects[i].id].say}。`, en: `That’s the ${E.WORD[objects[i].id].en}.` });
+      if (!play || play.pending !== p) return;
+      await speak(beat.line);
+      play.busy = false;
+      p.reask();
+      return;
+    }
+    if (!hit) {
+      // Not near anything: no harm done, try again.
+      moveHome(i);
+      p.reask();
+      return;
+    }
+    play.busy = true;
+    placeAt(i, hit.anchor, hit.rel);
+    if (hit.anchor === beat.anchor && hit.rel === beat.rel) {
+      play.pending = null;
+      E.recordAsk(state, beat, today(), p.firstTry);
+      save();
+      await speak(E.whereRightLine(objects, beat));
+      await sleep(400);
+      moveHome(i);
+      await sleep(400);
+      play.busy = false;
+      p.resolve();
+      return;
+    }
+    // Somewhere else: say where it is, show the right place, then your turn again.
+    p.firstTry = false;
+    await speak(E.wherePlacedLine(objects, hit.anchor, hit.rel));
+    await sleep(600);
+    if (!play || play.pending !== p) return;
+    placeAt(i, beat.anchor, beat.rel);
+    await sleep(500);
+    await speak(E.whereLine(objects, beat.mover, beat.anchor, beat.rel));
+    await sleep(500);
+    moveHome(i);
+    await sleep(450);
+    if (!play || play.pending !== p) return;
+    await speak(beat.line);
+    play.busy = false;
+    p.reask();
   }
 
   // ---------- Do it ----------
@@ -518,7 +716,22 @@
         const k = stats[w.id] && stats[w.id].known;
         return `<button class="word ${k ? 'known' : ''}" data-action="hear" data-id="${w.id}" aria-label="${esc(w.ja)}, ${k ? 'understood' : 'still settling'}"><span class="pic">${w.pic}</span><span lang="ja">${esc(w.ja)}</span></button>`;
       }).join('')}</div>
-      <p class="fine">Tap a word to hear it. A word counts as understood once you’ve found it three times in a row, on at least two different days.</p>` : '<p class="fine">Words you meet in Look &amp; point show up here.</p>'}`;
+      <p class="fine">Tap a word to hear it. A word counts as understood once you’ve found it three times in a row, on at least two different days.</p>` : '<p class="fine">Words you meet in Look &amp; point show up here.</p>'}
+      ${extrasView(stats)}`;
+  }
+
+  // Describing and where words, once met.
+  function extrasView(stats) {
+    const items = [...Object.values(E.ADJ), ...Object.values(E.REL)].filter((x) => state.met[x.id]);
+    const next = [];
+    if (!state.met.ookii) next.push(`big and small after ${E.SIZE_UNLOCK} words`);
+    if (!state.met.ue) next.push(`where things are after ${E.WHERE_UNLOCK} words, including a chair or tree and a box or bag`);
+    return `<h2 class="section">Describing and where</h2>
+      ${items.length ? `<div class="chips">${items.map((x) => {
+        const k = stats[x.id] && stats[x.id].known;
+        return `<button class="chip ${k ? 'known' : ''}" data-action="hear-item" data-say="${esc(x.say)}" data-ja="${esc(x.ja)}" data-en="${esc(x.en)}"><span lang="ja">${esc(x.ja)}</span></button>`;
+      }).join('')}</div>` : ''}
+      <p class="fine">${next.length ? `Coming up: ${esc(next.join('; '))}.` : 'Tap one to hear it.'}</p>`;
   }
 
   // The last five weeks, Monday first. Filled: goal met. Ring: 2+ minutes. Dot: shield used.
@@ -694,6 +907,7 @@
         break;
       case 'pause': togglePause(); break;
       case 'skip': if (play) { play.skip = true; Voice.stop(); } break;
+      case 'hear-item': Voice.say(b.dataset.say); toast(`${b.dataset.ja} · ${E.romaji(b.dataset.ja)} · ${b.dataset.en}`); break;
       case 'hear': { const w = E.WORD[b.dataset.id]; if (w) { Voice.say(w.say); toast(`${w.ja} · ${E.romaji(w.ja)} · ${w.en}`); } break; }
       case 'set': {
         const k = b.dataset.key;

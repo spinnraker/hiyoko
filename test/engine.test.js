@@ -16,7 +16,7 @@ function play(state, day, rounds, rng = seeded(), answer = () => true) {
   for (let k = 0; k < rounds; k++) {
     const r = E.buildRound(state, day, rng);
     E.recordMeet(state, r.meet, day);
-    for (const b of r.beats) if (b.type === 'ask') E.recordAsk(state, b, day, answer(b, r));
+    for (const b of r.beats) if (b.type === 'ask' || b.type === 'put') E.recordAsk(state, b, day, answer(b, r));
     out.push(r);
   }
   return out;
@@ -106,8 +106,13 @@ test('every ask target is in the scene and the scene has no duplicates', () => {
       const keys = r.objects.map((o) => o.id + (o.size || ''));
       assert.equal(new Set(keys).size, keys.length);
       for (const b of r.beats) {
-        const idx = b.type === 'show' ? [b.obj] : b.targets;
+        const idx = b.type === 'show' ? [b.obj] : b.type === 'ask' ? b.targets : [b.mover, b.anchor];
         for (const i of idx) assert.ok(r.objects[i]);
+        if (b.type === 'put' || b.type === 'demo') {
+          assert.equal(r.objects[b.anchor].role, 'anchor');
+          assert.equal(r.objects[b.mover].role, 'mover');
+          assert.ok(E.ANCHORS[r.objects[b.anchor].id].includes(b.rel));
+        }
       }
     }
   }
@@ -142,6 +147,7 @@ test('routines: shuffled ones are reordered and trimmed, long waits repeat', () 
   assert.notDeepEqual(a, b);
   const coffee = E.routineSteps('coffee');
   assert.equal(coffee[0].ja, 'キッチンに いこう。');
+  assert.ok(coffee.some((st) => st.ja === 'カップを とって。'));
   assert.equal(coffee.find((s) => s.wait === 40).repeatAt, 20);
   assert.equal(coffee.find((s) => s.wait === 5).repeatAt, null);
   assert.deepEqual(E.routineSteps('nope'), []);
@@ -209,4 +215,95 @@ test('normalize keeps good data and flags the rest', () => {
   assert.equal(state.seenIntro, true);
   assert.equal(E.normalize(E.emptyState()).dropped, false);
   assert.equal(E.normalize(null).dropped, true);
+});
+
+// Know `ids` as of `day` (three right answers over two days).
+function know(s, ids, day) {
+  for (const id of ids) {
+    s.met[id] = E.addDays(day, -1);
+    s.asks.push([E.addDays(day, -1), id, 1], [E.addDays(day, -1), id, 1], [day, id, 1]);
+  }
+}
+
+test('where-rounds start once 8 words, 2 anchors and 2 movable things are known', () => {
+  const s = E.emptyState();
+  const day = E.addDays(DAY, 3);
+  // Keep new words out of the way.
+  for (const w of E.WORDS) s.met[w.id] = day;
+  know(s, ['neko', 'inu', 'ringo', 'kuruma', 'hon', 'kutsu', 'sakana', 'isu'], day);
+  assert.notEqual(E.buildRound(s, day, seeded(2)).kind, 'where'); // only one anchor known
+  know(s, ['ki'], day);
+  const r = E.buildRound(s, day, seeded(2));
+  assert.equal(r.kind, 'where');
+  assert.deepEqual(r.meet, ['ue', 'shita']);
+  assert.deepEqual(r.beats.slice(0, 4).map((b) => b.type), ['demo', 'demo', 'demo', 'demo']);
+  const puts = r.beats.filter((b) => b.type === 'put');
+  assert.equal(puts.length, 4);
+  for (const b of puts) {
+    assert.ok(['ue', 'shita'].includes(b.rel));
+    assert.deepEqual(b.log, [r.objects[b.mover].id, r.objects[b.anchor].id, b.rel]);
+  }
+});
+
+test('"in" and "next to" wait for on/under to be steady and need a box or bag', () => {
+  const s = E.emptyState();
+  const day = E.addDays(DAY, 3);
+  for (const w of E.WORDS) s.met[w.id] = day;
+  know(s, ['neko', 'inu', 'ringo', 'kuruma', 'hon', 'kutsu', 'sakana', 'isu', 'ki'], day);
+  s.met.ue = day; s.met.shita = day;
+  s.asks.push([day, 'ue', 1], [day, 'shita', 0]);
+  for (let k = 1; k < 20; k++) {
+    const r = E.buildRound(s, day, seeded(k));
+    if (r.kind === 'where') assert.deepEqual(r.meet, []);
+  }
+  s.asks.push([day, 'ue', 1], [day, 'shita', 1], [day, 'shita', 1]);
+  // Steady now, but no box or bag known yet.
+  for (let k = 1; k < 20; k++) {
+    const r = E.buildRound(s, day, seeded(k));
+    if (r.kind === 'where') assert.deepEqual(r.meet, []);
+  }
+  know(s, ['hako'], day);
+  let saw = false;
+  for (let k = 1; k < 40 && !saw; k++) {
+    const r = E.buildRound(s, day, seeded(k));
+    if (r.kind !== 'where') continue;
+    saw = true;
+    assert.deepEqual(r.meet, ['naka', 'yoko']);
+    const ids = r.objects.filter((o) => o.role === 'anchor').map((o) => o.id);
+    assert.ok(ids.includes('hako'));
+    assert.ok(ids.some((id) => id === 'isu' || id === 'ki'), 'still able to show under');
+  }
+  assert.ok(saw);
+});
+
+test('where lines', () => {
+  const objects = [{ id: 'isu' }, { id: 'hako' }, { id: 'neko' }];
+  assert.deepEqual(E.putLine(objects, 2, 0, 'ue'), { ja: 'ねこを いすの うえに おいて。', say: '猫を椅子の上に置いて。', en: 'Put the cat on the chair.' });
+  assert.deepEqual(E.putLine(objects, 2, 1, 'naka'), { ja: 'ねこを はこの なかに いれて。', say: '猫を箱の中に入れて。', en: 'Put the cat in the box.' });
+  assert.equal(E.whereLine(objects, 2, 0, 'shita').ja, 'ねこは いすの した。');
+  assert.equal(E.whereRightLine(objects, { mover: 2, anchor: 1, rel: 'yoko' }, () => 0).ja, 'そう！ ねこは はこの よこ。');
+  assert.equal(E.wherePlacedLine(objects, 0, 'ue').ja, 'それは いすの うえ。');
+});
+
+test('judging where something was dropped', () => {
+  const chair = { index: 0, id: 'isu', x: 100, y: 200, size: 100 };
+  const box = { index: 1, id: 'hako', x: 300, y: 200, size: 100 };
+  const j = (x, y) => E.judgeDrop(x, y, [chair, box]);
+  assert.deepEqual(j(100, 130), { anchor: 0, rel: 'ue' });
+  assert.deepEqual(j(100, 205), { anchor: 0, rel: 'ue' }); // on the seat
+  assert.deepEqual(j(100, 270), { anchor: 0, rel: 'shita' });
+  assert.deepEqual(j(30, 210), { anchor: 0, rel: 'yoko' });
+  assert.deepEqual(j(300, 205), { anchor: 1, rel: 'naka' });
+  assert.deepEqual(j(300, 130), { anchor: 1, rel: 'ue' });
+  assert.deepEqual(j(380, 200), { anchor: 1, rel: 'yoko' });
+  assert.equal(j(200, 40), null);
+  // Where the app draws things is judged the same way.
+  for (const rel of ['ue', 'shita', 'yoko']) {
+    const p = E.placeFor(rel, chair, -1);
+    assert.equal(j(p.x, p.y).rel, rel, rel);
+  }
+  for (const rel of ['naka', 'ue', 'yoko']) {
+    const p = E.placeFor(rel, box, 1);
+    assert.equal(j(p.x, p.y).rel, rel, rel);
+  }
 });

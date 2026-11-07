@@ -32,6 +32,7 @@ Rounds of 3 to 6 pictures. The voice asks 「ねこは どこ？」 ("Where's th
 - **Wrong:** it names what you tapped (「それは いぬ。」), points at the right one (「ねこは これ。」) and asks again. Only the first tap is graded.
 - **New words:** at most 6 a day, and only once the earlier words are steady (the last two answers right).
 - **Unlocks:** big and small (おおきい／ちいさい) arrive once 6 words are understood, and pairs (「ねこと いぬは どこ？」) at 10.
+- **Where things are** starts at 8 understood words (including a chair or tree to put things on). A chair, tree, box or bag sits in the scene and a few things wait along the top. First the app shows you: it moves the cat and says 「ねこは いすの うえ。」 ("The cat is on the chair."). Then it's your turn: 「りんごを きの したに おいて。」 ("Put the apple under the tree.") You drag it there, or tap it and then tap where it goes. If you put it somewhere else, it says where it ended up, shows the right place, and you try again. On and under (うえ／した) come first. In and next to (なか／よこ) follow once those are steady and you know a box or bag.
 - **Understood** means three right in a row, on at least two different days.
 
 ## Do it
@@ -52,15 +53,20 @@ Long steps repeat the line halfway through. Use Again, Pause and Next as needed.
 
 ## How it works
 
-- `engine.js` is pure logic with tests. It holds the content (31 words, 4 routines), builds rounds, judges what you know from the answer log, and works out the streak, shields and listening journey. It also has a kana → romaji converter for the optional captions.
+- `engine.js` is pure logic with tests. It holds the content (32 words, describing and where words, 4 routines), builds rounds, judges what you know from the answer log, and works out the streak, shields and listening journey. It also has a kana → romaji converter for the optional captions.
 - `app.js` handles the UI, voice (Web Speech API, `ja-JP`) and storage (`localStorage`, key `hiyoko:v1`). Saved and imported data is checked on load. Anything that can't be read is kept under a `hiyoko:v1:unreadable:*` key instead of being overwritten.
 - The voice reads kanji versions of each line (`say`), so it pronounces particles and short words correctly. The screen shows kana with spaces between words, like a children's book (`ja`).
 - The pictures are your device's emoji, shown in grayscale.
 - `sw.js` caches the app for offline use. Bump `CACHE` when you ship changes.
 
+## Checking the Japanese
+
+`REVIEW.md` lists every word and sentence pattern the app says, with meanings and the kanji the voice reads, plus a column for a native speaker to mark. Regenerate it after changing content with `npm run review`.
+
 ## Next ideas
 
-- More scenes: where things are (on, under, in), counting, colours by word.
+- More describing words: colours, many/one, hot/cold.
+- Actions in scenes (eating, sleeping, running), and routines that unlock new steps.
 - Short picture stories that use known words plus one new one, retold with small changes.
 - Optional shadowing: the voice says a line, you repeat it.
 - Have a native speaker check or record the lines. Phone voices sometimes get pitch accent wrong.
